@@ -1,0 +1,197 @@
+import discord
+from sys import exit
+
+client = discord.Client()
+
+auth_url = "https://discordapp.com/api/oauth2/authorize?client_id=396257905394974720&permissions=0&scope=bot"
+help_message = ("```list of commands:\n" +
+                "$info *explains the features of this bot and how to use it*\n" +
+                "$servers *shows how many servers currently use the global chat*\n" +
+                "$list *shows all servers with their id*\n" +
+                "$msg server_id message *sends a message only to one specific server*\n"
+                "```")
+info_message =("```introduction\n" +
+               "-The main feature of this bot is a global chat where you can send messages to all " +
+               "servers which use this bot.\n" +
+               "-To make this possible you have to create a text-channel named 'global'. " +
+               "-It's recommended to mark #global as nsfw and disable @everyone-mentions because the bot has " +
+               " no control over the written content.\n" +
+               "-If you give the bot the permission to delete messages it will delete commands " +
+               "after executing them leaving the chat much cleaner. " +
+               "-The more servers use the global chat, the better it gets. To invite other people," +
+               "just give them this authorization-link:\n" +
+               auth_url +
+               "\nThis bot is still in the test phase. If you have any problems/questions, please contact " +
+               "NussNinja#2891 via Discord."
+               "```")
+control_center_id = "391548542864326658"
+control_center = client.get_server(control_center_id)
+log_channel_id = "395334362012581909"
+
+
+@client.event
+async def on_ready():
+    await client.change_presence(game=discord.Game(name="$help"))
+
+
+@client.event
+async def on_message(message):
+    srvs = list(client.servers)
+    for s in srvs:
+        has_global = False
+        for c in s.channels:
+            if c.name == "global":
+                has_global = True
+        if not has_global:
+            srvs.remove(s)
+
+    if message.content.startswith("$"):
+        try:
+
+            if message.author == client.user:
+                return
+
+            if message.content.startswith("$help"):
+                await client.delete_message(message)
+                await client.send_message(message.channel, help_message)
+            if message.content.startswith("$info"):
+                await client.delete_message(message)
+                await client.send_message(message.channel, info_message)
+            if message.content.startswith("$servers"):
+                await client.delete_message(message)
+                await client.send_message(message.channel,
+                                          "```Currently, " +
+                                          str(len(srvs)) +
+                                          " servers are using the global chat.```")
+            if message.content.startswith("$msg"):
+                try:
+                    await client.delete_message(message)
+                    server_id = message.content.split(" ")[1]
+                    server = client.get_server(server_id)
+                    msg = str(message.content)[len(server_id)+6:]
+                    if len(msg) >= 1:
+                        for c in server.channels:
+                            if c.name == "global":
+                                await client.send_message(c,
+                                                          "```[private] " +
+                                                          message.author.name +
+                                                          " from " +
+                                                          message.server.name +
+                                                          "```\n" +
+                                                          msg)
+                                await client.send_message(client.get_channel(log_channel_id),
+                                                          "msg from " +
+                                                          message.author.name +
+                                                          " from " +
+                                                          message.server.name +
+                                                          "/" +
+                                                          message.server.id +
+                                                          " to " +
+                                                          server.name +
+                                                          "/" +
+                                                          server.id +
+                                                          "\n" +
+                                                          msg)
+                        await client.send_message(message.channel,
+                                                  "```msg from " +
+                                                  message.author.name +
+                                                  " to " +
+                                                  server.name +
+                                                  "/" +
+                                                  server.id +
+                                                  "\n'" +
+                                                  msg +
+                                                  "'```")
+                except AttributeError:
+                    await client.send_message(message.channel,
+                                              "```[error] invalid server id```")
+            if message.content.startswith("$list"):
+                await client.delete_message(message)
+                server_list = ""
+                for s in srvs:
+                    server_list = server_list + s.name + "/" + str(s.id) + "\n"
+                await client.send_message(message.channel,
+                                          "```list of servers\n" +
+                                          server_list +
+                                          "```")
+        except discord.Forbidden:
+            await client.send_message(message.channel,
+                                      "```[error] missing permissions```")
+
+        if message.server.id == control_center_id:
+            if message.content.startswith("$stop"):
+                await client.delete_message(message)
+                print("bot shut down via discord-command")
+                client.close()
+                client.logout()
+                exit(0)
+            if message.content.startswith("$leave"):
+                server_id = str(message.content).split(" ")[1]
+                server = client.get_server(server_id)  # variable is declared twice. problems?
+                reason = str(message.content)[6 + len(server_id):]
+                for c in server.channels:
+                    if c.name == "global":
+                        await client.send_message(c,
+                                                  "```I have to leave this server. Reason: " +
+                                                  reason +
+                                                  "```")
+                await client.leave_server(server)
+            if message.content.startswith("$blacklist"):
+                await client.delete_message(message)
+                blacklist = open("blacklist.txt", "a")
+                blacklist.write(message.content[11:])
+                blacklist.close()
+            if message.content.startswith("$blacklist_remove"): #dosen't work yet
+                await client.delete_message(message)
+                blacklist = open("blacklist.txt", "r+")
+                d = blacklist.readlines()
+                blacklist.seek(0)
+                for i in d:
+                    if i != message.content[18:]:
+                        blacklist.write(i)
+                blacklist.truncate()
+                blacklist.close()
+
+    elif message.channel.name == "global":
+        if message.author == client.user:
+            return
+        srvs.remove(message.server)
+        for srv in srvs:
+            for channel in srv.channels:
+                if channel.name == "global":
+                    await client.send_message(channel,
+                                              "```" +
+                                              message.author.name +
+                                              " from " +
+                                              message.channel.server.name +
+                                              "```" +
+                                              message.content)
+
+
+@client.event
+async def on_server_join(server):
+    blacklist = open("blacklist.txt", "r")
+    while True:
+        line = blacklist.readline()
+        if line == server.id:
+            await client.leave_server(server)
+            break
+        if line == "":
+            break
+    blacklist.close()
+    await client.send_message(client.get_channel(log_channel_id),
+                              "joined " +
+                              server.name +
+                              "/" +
+                              server.id)
+
+
+@client.event
+async def on_server_remove(server):
+    await client.send_message(client.get_channel(log_channel_id),
+                              "left " +
+                              server.name +
+                              "/" +
+                              server.id)
+
+client.run(token)
